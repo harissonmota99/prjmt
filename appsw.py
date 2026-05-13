@@ -1,5 +1,6 @@
 from flask import Flask, request
 from netmiko import ConnectHandler
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -15,7 +16,7 @@ def gerar_comandos(hostname, vlans):
         comandos.append("exit")
 
     return comandos
-def aplicar_no_switch(comandos):
+def aplicar_no_switch(comandos, hostname):
     switch = {
         "device_type": "cisco_ios",
         "host": "192.168.254.34",
@@ -24,12 +25,21 @@ def aplicar_no_switch(comandos):
     }
 
     conexao = ConnectHandler(**switch)
+
     resultado = conexao.send_config_set(comandos)
     conexao.save_config()
+
+    configuracao_atual = conexao.send_command("show running-config")
+
+    data_hora = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    nome_arquivo = f"backup_{hostname}_{data_hora}.txt"
+
+    with open(nome_arquivo, "w") as arquivo:
+        arquivo.write(configuracao_atual)
+
     conexao.disconnect()
 
-    return resultado
-
+    return resultado, nome_arquivo
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -48,9 +58,10 @@ def index():
 
         resultado = "\n".join(comandos)
     try:
-        retorno_switch = aplicar_no_switch(comandos)
+        retorno_switch, nome_arquivo = aplicar_no_switch(comandos, hostname) 
         resultado += "\n\nConfiguração aplicada no switch com sucesso!\n\n"
         resultado += retorno_switch
+        resultado += f"\n\nBackup salvo no arquivo: {nome_arquivo}"
     except Exception as erro:
         resultado += f"\n\nErro ao aplicar no switch:\n{erro}"
 
