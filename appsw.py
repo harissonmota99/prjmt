@@ -16,18 +16,25 @@ def gerar_comandos(hostname, vlans):
         comandos.append("exit")
 
     return comandos
+
+
 def aplicar_no_switch(comandos, hostname):
     switch = {
         "device_type": "cisco_ios",
         "host": "192.168.254.34",
         "username": "harisson",
         "password": "m0t@2026",
+        "timeout": 60,
+        "fast_cli": False,
     }
 
     conexao = ConnectHandler(**switch)
 
+    conexao.send_command("terminal length 0")
+
     resultado = conexao.send_config_set(comandos)
-    conexao.save_config()
+
+    salvar = conexao.send_command_timing("write memory")
 
     configuracao_atual = conexao.send_command("show running-config")
 
@@ -39,7 +46,8 @@ def aplicar_no_switch(comandos, hostname):
 
     conexao.disconnect()
 
-    return resultado, nome_arquivo
+    return resultado + "\n" + salvar, nome_arquivo
+
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -56,14 +64,18 @@ def index():
 
         comandos = gerar_comandos(hostname, vlans)
 
-        resultado = "\n".join(comandos)
-    try:
-        retorno_switch, nome_arquivo = aplicar_no_switch(comandos, hostname) 
-        resultado += "\n\nConfiguração aplicada no switch com sucesso!\n\n"
-        resultado += retorno_switch
-        resultado += f"\n\nBackup salvo no arquivo: {nome_arquivo}"
-    except Exception as erro:
-        resultado += f"\n\nErro ao aplicar no switch:\n{erro}"
+        resultado = "Comandos gerados:\n\n"
+        resultado += "\n".join(comandos)
+
+        try:
+            retorno_switch, nome_arquivo = aplicar_no_switch(comandos, hostname)
+
+            resultado += "\n\nConfiguração aplicada no switch com sucesso!\n\n"
+            resultado += retorno_switch
+            resultado += f"\n\nBackup salvo no arquivo: {nome_arquivo}"
+
+        except Exception as erro:
+            resultado += f"\n\nErro ao aplicar no switch:\n{erro}"
 
     return f"""
     <html>
@@ -95,10 +107,10 @@ def index():
             <label>Nome:</label><br>
             <input type="text" name="vlan50_nome" value="VLAN_SEGURANCA"><br><br>
 
-            <button type="submit">Gerar Configuração</button>
+            <button type="submit">Gerar e Aplicar Configuração</button>
         </form>
 
-        <h2>Comandos Gerados:</h2>
+        <h2>Resultado:</h2>
         <pre>{resultado}</pre>
     </body>
     </html>
